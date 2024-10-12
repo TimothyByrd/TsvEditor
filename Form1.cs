@@ -43,8 +43,15 @@ namespace TsvEditor
             }
         }
 
+        enum SortType
+        {
+            Text,
+            Number,
+        }
+
         private const string selectAColumn = "(select a column)";
         private FileInfo? _currentFile;
+        private readonly Dictionary<string, SortType> _columnSorts = [];
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -81,6 +88,20 @@ namespace TsvEditor
 
             SetStatusText($"1 {filePath}");
 
+            var lines = File.ReadAllLines(filePath);
+            if (lines.Length == 0)
+            {
+                SetStatusText($"Too few lines in {filePath}");
+                return;
+            }
+
+            var columnNames = $"#\t{lines[0]}".Split('\t'); // prepend fake column for row number
+            if (columnNames.Length < 3)
+            {
+                SetStatusText($"Too few columns in {filePath}");
+                return;
+            }
+
             //
             // speed-up ideas from https://10tec.com/articles/why-datagridview-slow.aspx
             //
@@ -105,40 +126,19 @@ namespace TsvEditor
 
             grid.Rows.Clear();
             grid.Columns.Clear();
-            var lines = File.ReadAllLines(filePath);
-            if (lines.Length == 0)
-            {
-                SetStatusText($"Too few lines in {filePath}");
-                return;
-            }
+            _columnSorts.Clear();
 
             SetStatusText($"2 {filePath}");
-
-            var columnNames = lines[0].Split('\t');
-            if (columnNames.Length < 2)
-            {
-                SetStatusText($"Too few columns in {filePath}");
-                return;
-            }
 
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
             grid.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing;
             grid.RowHeadersVisible = false;
 
+
             ((System.ComponentModel.ISupportInitialize)grid).BeginInit();
-            grid.Columns.Add(new DataGridViewTextBoxColumn
+            foreach (var columnName in columnNames)
             {
-                HeaderText = "#",
-                AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
-            });
-            foreach (var column in columnNames)
-            {
-                grid.Columns.Add(new DataGridViewTextBoxColumn
-                {
-                    HeaderText = column,
-                    AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
-                    Name = column,
-                });
+                AddColumn(grid, columnName);
             }
 
             toolStripComboBoxColumnFilter.Items.Add(selectAColumn);
@@ -153,11 +153,16 @@ namespace TsvEditor
             foreach (var line in lines.Skip(1))
             {
                 ++rowNum;
-                var lineWithRowNum = $"{rowNum}\t{line}";
-                var columns = lineWithRowNum.Split('\t');
+                var cellValues = $"{rowNum}\t{line}".Split('\t');
                 var row = new DataGridViewRow();
-                row.CreateCells(grid, columns);
+                row.CreateCells(grid, cellValues);
                 rows.Add(row);
+                var maxIndex = Math.Min(columnNames.Length, cellValues.Length);
+                for (int i = 0; i < maxIndex; i++)
+                {
+                    if (!string.IsNullOrEmpty(cellValues[i]) && !int.TryParse(cellValues[i], out int _))
+                        _columnSorts[columnNames[i]] = SortType.Text;
+                }
             }
 
             SetStatusText($"4 {filePath}");
@@ -183,6 +188,17 @@ namespace TsvEditor
             var fileDirectory = Path.GetDirectoryName(filePath);
             SetTitleText($"{fileName} ({fileDirectory})");
             SetStatusText(string.Empty);
+
+            void AddColumn(DataGridView grid, string columnName)
+            {
+                grid.Columns.Add(new DataGridViewTextBoxColumn
+                {
+                    HeaderText = columnName,
+                    AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
+                    Name = columnName,
+                });
+                _columnSorts[columnName] = SortType.Number; // Assume numeric for now
+            }
         }
 
         private void SetStatusText(string s)
@@ -386,11 +402,22 @@ namespace TsvEditor
 
         private void dataGridView1_SortCompare(object sender, DataGridViewSortCompareEventArgs e)
         {
-            //Suppose your interested column has index 1
-            if (e.Column.HeaderText == "#")
+
+            if (!_columnSorts.TryGetValue(e.Column.HeaderText, out var sortType))
+                sortType = SortType.Text;
+
+            if (sortType == SortType.Number)
             {
-                e.SortResult = int.Parse(e.CellValue1?.ToString() ?? "-1").CompareTo(int.Parse(e.CellValue2?.ToString() ?? "-1"));
+                e.SortResult = GetCellInt(e.CellValue1).CompareTo(GetCellInt(e.CellValue2));
                 e.Handled = true;//pass by the default sorting
+            }
+
+            static int GetCellInt(object? obj)
+            { 
+                var s = obj as string;
+                if (int.TryParse(s, out var i))
+                    return i;
+                return -1;
             }
         }
 
@@ -407,7 +434,6 @@ namespace TsvEditor
             Exact = 2,
             Regex = 3,
         }
-
 
         private void ApplyFilter()
         {
