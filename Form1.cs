@@ -14,7 +14,8 @@ namespace TsvEditor
             dataGridView1.Visible = false;
             SetTitleText();
             toolStripStatusLabel1.Text = "Open a .txt file";
-            toolStripTextBoxSearchText.TextBox.PlaceholderText = "search";
+            toolStripTextBoxSearchText.TextBox.PlaceholderText = "search text";
+            toolStripTextBoxFilterText.TextBox.PlaceholderText = "filter text";
             this.AllowDrop = true;
             this.DragEnter += new DragEventHandler(Form1_DragEnter);
             this.DragDrop += new DragEventHandler(Form1_DragDrop);
@@ -93,9 +94,14 @@ namespace TsvEditor
                 pi?.SetValue(grid, true, null);
             }
 
-            toolStripComboBoxFilterType.SelectedIndex = 0;
+            var isSameFilename = _currentFile != null && string.Equals(Path.GetFileName(_currentFile.FilePath) , Path.GetFileName(filePath), StringComparison.OrdinalIgnoreCase);
+            var selectedColumnText = isSameFilename ? toolStripComboBoxColumnFilter.Text : selectAColumn;
+            if (!isSameFilename)
+            {
+                toolStripComboBoxFilterType.SelectedIndex = 0;
+                toolStripTextBoxFilterText.Text = string.Empty;
+            }
             toolStripComboBoxColumnFilter.Items.Clear();
-            toolStripTextBoxFilterText.Text = string.Empty;
 
             grid.Rows.Clear();
             grid.Columns.Clear();
@@ -137,7 +143,7 @@ namespace TsvEditor
 
             toolStripComboBoxColumnFilter.Items.Add(selectAColumn);
             toolStripComboBoxColumnFilter.Items.AddRange(columnNames);
-            toolStripComboBoxColumnFilter.SelectedIndex = 0;
+            toolStripComboBoxColumnFilter.Text = selectedColumnText;
 
             SetStatusText($"3 {filePath}");
 
@@ -243,14 +249,24 @@ namespace TsvEditor
             }
         }
 
-        private static void MaybeDoBackup(FileInfo file)
+        private void MaybeDoBackup(FileInfo file)
         {
             if (file.HaveMadeBackup)
                 return;
 
-            var backupPath = file.FilePath + ".bak";
-            File.Copy(file.FilePath, backupPath, true);
-            file.HaveMadeBackup = true;
+            if (!File.Exists(file.FilePath))
+                return;
+
+            try
+            {
+                var backupPath = file.FilePath + ".bak";
+                File.Copy(file.FilePath, backupPath, true);
+                file.HaveMadeBackup = true;
+            }
+            catch (Exception ex)
+            {
+                SetStatusText($"Error: {ex.Message}");
+            }
         }
 
         private void saveAsToolStripMenuItem_Click(object sender, EventArgs e)
