@@ -494,6 +494,7 @@ namespace TsvEditor
                 if (counter % 10 == 0)
                     SetStatusText($"Showing {shown} / {counter} rows");
             }
+            SetStatusText($"Showing {shown} / {counter} rows");
 
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
             grid.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.AutoSizeToAllHeaders;
